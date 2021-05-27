@@ -2,6 +2,7 @@ import vk_api
 import random
 import requests
 import bs4
+from transliterate import translit
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from bs4 import BeautifulSoup
@@ -52,18 +53,21 @@ class VkBot:
 
     def _get_result(self, team):
         url = "https://www.sports.ru/krasnodar/calendar/"
-        if team == "краснодар":
-            url = "https://www.sports.ru/krasnodar/calendar/"
-        elif team == "локомотив":
-            url = "https://www.sports.ru/lokomotiv/calendar/"
-        elif team == "цска":
-            url = "https://www.sports.ru/cska/calendar/"
-        elif team == "спартак":
-            url = "https://www.sports.ru/spartak/calendar/"
+
+        url = "https://www.sports.ru/" + translit(team, language_code='ru', reversed=True) + "/calendar/"
+        # if team == "краснодар":
+        #     url = "https://www.sports.ru/krasnodar/calendar/"
+        # elif team == "локомотив":
+        #     url = "https://www.sports.ru/lokomotiv/calendar/"
+        # elif team == "цска":
+        #     url = "https://www.sports.ru/cska/calendar/"
+        # elif team == "спартак":
+        #     url = "https://www.sports.ru/spartak/calendar/"
 
         page = requests.get(url)
-        print(page)
-
+        print(page.status_code)
+        if page.status_code != 200:
+            return "Я не смог ничего найти"
         # all_matches = []
 
         soup = BeautifulSoup(page.text, "html.parser")
@@ -84,18 +88,21 @@ class VkBot:
                      "score": filtered_stats[3]}
             final_stats.append(stats)
 
-        return final_stats[0]["date"] + '  ' + final_stats[0]["opponent"] + ' - ' + final_stats[0]["score"]
+        return final_stats[0]["date"] + '\n' + team.capitalize() + ' ' + final_stats[0]["score"] + ' ' + final_stats[0][
+            "opponent"]
 
     def _send_result(self, user_id, message):
-        team = "краснодар"
-        if "краснодар" in message:
-            team = "краснодар"
-        elif "локомотив" in message:
-            team = "локомотив"
-        elif "цска" in message:
-            team = "цска"
-        elif "спартак" in message:
-            team = "спартак"
+        # team = "краснодар"
+        # if "краснодар" in message:
+        #     team = "краснодар"
+        # elif "локомотив" in message:
+        #     team = "локомотив"
+        # elif "цска" in message:
+        #     team = "цска"
+        # elif "спартак" in message:
+        #     team = "спартак"
+        team = message.replace("последний матч", "")
+        team = team.replace(" ", "")
         text = self._get_result(team)
         self._write_msg(user_id, text)
 
@@ -126,7 +133,8 @@ class VkBot:
 
         return user_name.split()[0] + ' ' + user_name.split()[1]
 
-    def get_random_id(self):
+    @staticmethod
+    def get_random_id():
         return random.randint(1, 2147483647)
 
     @staticmethod
