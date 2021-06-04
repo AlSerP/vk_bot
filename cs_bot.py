@@ -2,7 +2,6 @@ import vk_api
 import random
 import requests
 import bs4
-from transliterate import translit
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from bs4 import BeautifulSoup
