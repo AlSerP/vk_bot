@@ -3,11 +3,33 @@ import requests
 from bs4 import BeautifulSoup
 
 headers = {
-
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.89 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
     'Accept-Language': 'ru-UA,ru;q=0.9,en-US;q=0.8,en;q=0.7,ru-RU;q=0.6',
 }
+
+
+def forgot_favorite(user_id, id):
+    # items = get_favorite_items(user_id)
+    line = find_line(user_id)
+    print(line)
+    cut_line(line)
+    new_line = str(user_id) + ' :'
+    print(new_line)
+    items = line.split(' : ')[1].split(' ')
+    print(items)
+    print(len(items))
+
+    if id < 0 < len(items) < id:
+        return -1
+    for item in items:
+        print(item)
+        id -= 1
+        if id != 0:
+            new_line += ' ' + item
+    print(new_line)
+    write_line(new_line)
+    return 0
 
 
 def cut_name(tag_context):
@@ -40,6 +62,7 @@ def add_favorite_item(user_id, item):
             print("Team is already added")
             return -1
         else:
+            print(item)
             cut_line(line)
             line += ' ' + item
 
@@ -77,25 +100,6 @@ def get_favorite_items(user_id):
         prise_fee = answer.json()["lowest_price"]
         item = {"name": name, "price_fee": prise_fee, "price_no_fee": prise_fee}
         item_names.append(item)
-        # if False:
-        #     for skin in skins[1:]:
-        #         # name = cut_name(skin.find('span', class_='market_listing_item_name'))
-        #         price_fee = cut_name(
-        #             skin.find('span', class_='market_listing_price market_listing_price_with_fee')).replace('\t',
-        #                                                                                                     '').replace(
-        #             '\r\n', '')
-        #         price_no_fee = cut_name(
-        #             skin.find('span', class_='market_listing_price market_listing_price_without_fee')).replace('\t',
-        #                                                                                                        '').replace(
-        #             '\r\n', '')
-        #         print(name, price_fee, price_no_fee)
-        #
-        #         if price_fee != "Продано!":
-        #             item = {"name": name, "price_fee": price_fee, "price_no_fee": price_no_fee}
-        #             item_names.append(item)
-        #             print(item)
-        #             break
-        # else:
 
     print(item_names)
     return item_names
@@ -117,6 +121,12 @@ def cut_line(line):
     find_in = open('fav_csgo.txt', 'w')
     find_in.writelines(lines)
     find_in.close()
+
+
+def write_line(line):
+    file_in = open('fav_csgo.txt', 'a')
+    file_in.write(line + '\n')
+    file_in.close()
 
 
 def find_line(user_id):

@@ -6,7 +6,7 @@ from transliterate import translit
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 from bs4 import BeautifulSoup
-from favorite_item import add_favorite_item, get_favorite_items
+from favorite_item import add_favorite_item, get_favorite_items, forgot_favorite
 
 
 class CsBot:
@@ -25,26 +25,60 @@ class CsBot:
 
     def start(self):
         print("Bot is started")
+
+        is_deleting = False
         for event in self.long_poll.listen():
             if event.type == VkEventType.MESSAGE_NEW:
 
                 if event.to_me:
                     request = event.text
                     user_id = event.user_id
+
                     print("I get a message:", request)
 
-                    if request.lower() in self.meetings:
+                    if is_deleting and request.isdigit():
+                        self._delete_favorite(user_id, int(request))
+                        is_deleting = False
+                    elif request.lower() in self.meetings:
                         self._write_msg(user_id, "Шалом")
-                    # elif request == "кто я":
-                    #     self._write_msg(user_id, self._get_user_by_id(user_id))
+                    elif request.lower() == "!удалить":
+                        is_deleting = self._delete_request(user_id)
                     elif request.lower() == "!избранное":
                         self._send_favorites(user_id)
                     elif "steamcommunity.com/market/listings/" in request:
                         self._add_favorites(user_id, request)
                     else:
                         self._write_msg(user_id, "Ты можешь:\n"
-                                                 "добавить предмет в избранное прислав на него ссылку\n"
-                                                 "получить информацию о избранных предметах - !Избранное")
+                                                 "прислать ссылку - добавить предмет в избранное\n"
+                                                 "!Избранное - получить информацию о избранных предметах\n"
+                                                 "!Удалить - удалить предмет из избранного")
+
+    def _delete_request(self, user_id):
+        items = get_favorite_items(user_id)
+
+        is_deleting = True
+        if items:
+            message = "Пришли цифру того, что хочешь удалить:\n"
+
+            i = 1
+            for item in items:
+                message += str(i) + ': ' + item["name"] + '\n\n'
+                i += 1
+        else:
+            message = "Пока у тебя нет избранных, однако ты " \
+                      "можешь их добавить прислав мне ссылку на предмет со steamcommunity.com/market/listings/730"
+            is_deleting = False
+
+        self._write_msg(user_id, message)
+        return is_deleting
+
+    def _delete_favorite(self, user_id, number):
+        if forgot_favorite(user_id, number) == -1:
+            message = "Я не могу удалить предмет с таким номером"
+            self._write_msg(user_id, message)
+        else:
+            message = "Предмет успешно удален"
+            self._write_msg(user_id, message)
 
     def _write_msg(self, user_id, message):
         print(message, "to", user_id, "was sent")
@@ -73,7 +107,6 @@ class CsBot:
 
         self._write_msg(user_id, message)
         pass
-
 
     @staticmethod
     def format_text(str):
