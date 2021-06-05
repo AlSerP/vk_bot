@@ -4,8 +4,11 @@ import requests
 import bs4
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
+from datetime import datetime
+import time
+from threading import Timer, Thread
 from bs4 import BeautifulSoup
-from favorite_item import add_favorite_item, get_favorite_items, forgot_favorite
+from favorite_item import *
 
 
 class CsBot:
@@ -14,21 +17,27 @@ class CsBot:
         self.vk_session = vk_api.VkApi(token=self.token)
         self.long_poll = VkLongPoll(self.vk_session)
 
-        # self.keyboard = VkKeyboard(one_time=True)
-        # self.keyboard.add_button('Привет', color=VkKeyboardColor.NEGATIVE)
-        # self.keyboard.add_button('Клавиатура', color=VkKeyboardColor.POSITIVE)
-        # self.keyboard.add_line()
-        # self.keyboard.add_location_button()
+        self.keyboard = VkKeyboard(one_time=False)
+        self.keyboard.add_button('Избранное⭐', color=VkKeyboardColor.SECONDARY)
+        self.keyboard.add_line()
+        self.keyboard.add_button('Удалить🗑', color=VkKeyboardColor.NEGATIVE)
+        self.keyboard.add_button('Уведомления⏰', color=VkKeyboardColor.PRIMARY)
 
         self.meetings = ["привет", "хай", "шалом", "вечер в хату", "hello"]
+        self.all_users = get_all_users()
+
+        self.item_names = get_items_info(get_all_favorite_items())
 
     def start(self):
         print("Bot is started")
 
         is_deleting = False
+
+        mailer = Thread(target=self.mailer)
+        mailer.start()
+        self.mail_keyboard()
         for event in self.long_poll.listen():
             if event.type == VkEventType.MESSAGE_NEW:
-
                 if event.to_me:
                     request = event.text
                     user_id = event.user_id
@@ -40,10 +49,12 @@ class CsBot:
                         is_deleting = False
                     elif request.lower() in self.meetings:
                         self._write_msg(user_id, "Шалом")
-                    elif request.lower() == "!удалить":
+                    elif request.lower() == "!удалить" or request.lower() == "удалить" or request == "Удалить🗑":
                         is_deleting = self._delete_request(user_id)
-                    elif request.lower() == "!избранное":
+                    elif request.lower() == "!избранное" or request.lower() == "избранное" or request == "Избранное⭐":
                         self._send_favorites(user_id)
+                    elif request == "Уведомления⏰":
+                        self._write_msg(user_id, "Мне настолько похуй, что пока это не работает")
                     elif "steamcommunity.com/market/listings/" in request:
                         self._add_favorites(user_id, request)
                     else:
@@ -52,8 +63,26 @@ class CsBot:
                                                  "!Избранное - получить информацию о избранных предметах\n"
                                                  "!Удалить - удалить предмет из избранного")
 
+    def _send_keyboard(self, user_id):
+        self.vk_session.method('messages.send',
+                               {'user_id': user_id, 'message': None, "random_id": self.get_random_id(),
+                                'keyboard': self.keyboard.get_keyboard()})
+
+    def mail_keyboard(self):
+        for user in self.all_users:
+            self._send_keyboard(user)
+
+    def mailer(self):
+        while True:
+            self._mail_all()
+            time.sleep(5 * 60 * 60)
+
+    def _mail_all(self):
+        for user in self.all_users:
+            self._send_favorites(user)
+
     def _delete_request(self, user_id):
-        items = get_favorite_items(user_id)
+        items = get_favorite_names(user_id, self.item_names)
 
         is_deleting = True
         if items:
@@ -82,24 +111,42 @@ class CsBot:
     def _write_msg(self, user_id, message):
         print(message, "to", user_id, "was sent")
         self.vk_session.method('messages.send',
-                               {'user_id': user_id, 'message': message, "random_id": self.get_random_id()})
+                               {'user_id': user_id, 'message': message, "random_id": self.get_random_id(),
+                                'keyboard': self.keyboard.get_keyboard()})
 
     def _add_favorites(self, user_id, url):
+
         if add_favorite_item(user_id, url) == -1:
             message = "Этот предмет уже в избранном"
         else:
             message = "Предмет добавлен!\nТеперь ты будешь получать информацию о нем!"
+            item = item_from_url(url)
+            steam_link = "https://steamcommunity.com/market/priceoverview/?currency=5&appid=730&market_hash_name=" + item
+            prise_fee = requests.get(steam_link).json()["lowest_price"]
+
+            self.item_names[item] = [get_item_name(item), prise_fee]
 
         self._write_msg(user_id, message)
 
     def _send_favorites(self, user_id):
-        items = get_favorite_items(user_id)
+        items = get_favorite_names(user_id, self.item_names)
 
         if items:
             message = "Твоё избранное:\n"
 
             for item in items:
-                message += ' ' + item["name"] + ':\n' + item["price_fee"] + '\n\n'
+                old_price = self.item_names[item["item_id"]][1]
+                message += ' ' + item["name"] + ':\n' + item["price_fee"]
+                if item["price_fee"] > old_price:
+                    message += ' (+' + str(round(
+                        self.price_to_float(item["price_fee"]) - self.price_to_float(old_price), 2)) + ')'
+                elif item["price_fee"] < old_price:
+                    message += ' (-' + str(round(
+                        self.price_to_float(item["price_fee"]) - self.price_to_float(old_price), 2)) + ')'
+                else:
+                    message += ' (=0)'
+
+                message += '\n\n'
         else:
             message = "Пока у тебя нет избранных, однако ты " \
                       "можешь их добавить прислав мне ссылку на предмет со steamcommunity.com/market/listings/730"
@@ -114,56 +161,6 @@ class CsBot:
             if str[i] != '\n':
                 result += str[i]
         return result
-
-    def _get_result(self, team):
-        url = "https://www.sports.ru/krasnodar/calendar/"
-
-        team_en = translit(team, language_code='ru', reversed=True)
-        team_en = team_en.replace("ju", "u").replace("ts", "c").replace("'", "")
-        print(team_en)
-        url = "https://www.sports.ru/" + team_en + "/calendar/"
-        # if team == "краснодар":
-        #     url = "https://www.sports.ru/krasnodar/calendar/"
-        # elif team == "локомотив":
-        #     url = "https://www.sports.ru/lokomotiv/calendar/"
-        # elif team == "цска":
-        #     url = "https://www.sports.ru/cska/calendar/"
-        # elif team == "спартак":
-        #     url = "https://www.sports.ru/spartak/calendar/"
-
-        page = requests.get(url)
-        print(page.status_code)
-        if page.status_code != 200:
-            return "Я не смог ничего найти"
-        # all_matches = []
-
-        soup = BeautifulSoup(page.text, "html.parser")
-        # print(soup)
-
-        soup = soup.find('table', class_="stat-table")
-        soup = soup.find('tbody')
-        all_matches = soup.findAll('tr')
-
-        final_stats = []
-        for match in all_matches:
-            match_stats = match.findAll('a')
-            filtered_stats = []
-            for stat in match_stats:
-                # stat = re.sub('\\n$', '', stat.text)
-                filtered_stats.append(self.format_text(stat.text))
-            stats = {"date": filtered_stats[0], "competition": filtered_stats[1], "opponent": filtered_stats[2],
-                     "score": filtered_stats[3]}
-            final_stats.append(stats)
-
-        return final_stats[0]["date"] + '\n' + team.capitalize() + ' ' + final_stats[0]["score"] + ' ' + final_stats[0][
-            "opponent"]
-
-    def _send_result(self, user_id, message):
-        # team = message.replace("последний матч", "")
-        # team = team.replace(" ", "")
-        # text = self._get_result(team)
-        # self._write_msg(user_id, text)
-        pass
 
     def _send_keyboard(self, user_id):
         # print("keyboard to", user_id, "was sent")
@@ -206,3 +203,7 @@ class CsBot:
                     not_skip = True
 
         return result
+
+    @staticmethod
+    def price_to_float(price):
+        return float(price[:-5].replace(',', '.'))

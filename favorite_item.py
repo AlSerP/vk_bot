@@ -12,13 +12,13 @@ headers = {
 def forgot_favorite(user_id, id):
     # items = get_favorite_items(user_id)
     line = find_line(user_id)
-    print(line)
+    # print(line)
     cut_line(line)
     new_line = str(user_id) + ' :'
-    print(new_line)
+    # print(new_line)
     items = line.split(' : ')[1].split(' ')
-    print(items)
-    print(len(items))
+    # print(items)
+    # print(len(items))
 
     if id < 0 < len(items) < id:
         return -1
@@ -27,7 +27,7 @@ def forgot_favorite(user_id, id):
         id -= 1
         if id != 0:
             new_line += ' ' + item
-    print(new_line)
+    # print(new_line)
     write_line(new_line)
     return 0
 
@@ -42,11 +42,11 @@ def add_favorite_item(user_id, item):
     if "steamcommunity.com/market/listings/" in item:
         item = item_from_url(item)
     user_id = str(user_id)
-    print(user_id)
+    # print(user_id)
     line = find_line(user_id)
 
-    print(line)
-    print(item)
+    # print(line)
+    # print(item)
     if not line:
         line = user_id + ' : ' + item
 
@@ -59,10 +59,10 @@ def add_favorite_item(user_id, item):
         read_items = read_items_str.split(' ')
 
         if item in read_items:
-            print("Team is already added")
+            # print("Team is already added")
             return -1
         else:
-            print(item)
+            # print(item)
             cut_line(line)
             line += ' ' + item
 
@@ -72,36 +72,40 @@ def add_favorite_item(user_id, item):
     return 0
 
 
-def get_favorite_items(user_id):
-    print(user_id)
+def get_item_name(item):
+    steam_link = ('https://steamcommunity.com/market/listings/730/' + item)
+    print(steam_link)
+
+    full_page = requests.get(steam_link, headers=headers)
+    soup = BeautifulSoup(full_page.content, 'html.parser')
+
+    name_tag = soup.find_all('div', class_="market_listing_nav")
+    try:
+        return str(name_tag).split('</a>')[1].split(">")[1]
+    except Exception:
+        print("Error with access to steam market")
+        return "Ошибка"
+
+
+def get_favorite_names(user_id, items_base):
     items = get_items_from_line(find_line(user_id))
-    print(items)
 
     item_names = []
     for item in items:
-        steam_link = ('https://steamcommunity.com/market/listings/730/' + item)
-        print(steam_link)
-
-        full_page = requests.get(steam_link, headers=headers)
-        soup = BeautifulSoup(full_page.content, 'html.parser')
-
-        # skins = soup.find_all('div', class_='market_listing_row')
-
-        # title = soup.find_all('title')
-        # name = str(title).split("Лоты ")[1].split('<')[0]
-        # name = str(skins).split('</a>')[1].split(">")[1]
-
-        skins = soup.find_all('div', class_="market_listing_nav")
-        # print(skins)
-        name = str(skins).split('</a>')[1].split(">")[1]
+        name = items_base[item][0]
 
         steam_link = "https://steamcommunity.com/market/priceoverview/?currency=5&appid=730&market_hash_name=" + item
-        answer = requests.get(steam_link)
-        prise_fee = answer.json()["lowest_price"]
-        item = {"name": name, "price_fee": prise_fee, "price_no_fee": prise_fee}
+
+        prise_fee = None
+        while not prise_fee:
+            prise_fee = requests.get(steam_link).json()
+
+        prise_fee = prise_fee["lowest_price"]
+
+        item = {"name": name, "item_id": item, "price_fee": prise_fee, "price_no_fee": prise_fee}
         item_names.append(item)
 
-    print(item_names)
+    # print(item_names)
     return item_names
 
 
@@ -144,3 +148,43 @@ def find_line(user_id):
 
 def item_from_url(url):
     return url.split('730/')[1].replace('/', '')
+
+
+def get_all_users():
+    users = []
+
+    file_out = open('fav_csgo.txt', 'r')
+    for line in file_out:
+        users.append(line.split(" : ")[0])
+
+    file_out.close()
+    return users
+
+
+def get_all_favorite_items():
+    all_items = []
+
+    for user_id in get_all_users():
+        items = get_items_from_line(find_line(user_id))
+
+        for item in items:
+            if item not in all_items:
+                all_items.append(item)
+
+    return all_items
+
+
+def get_items_info(items):
+    item_dict = {}
+
+    for item in items:
+        steam_link = "https://steamcommunity.com/market/priceoverview/?currency=5&appid=730&market_hash_name=" + item
+
+        prise_fee = None
+        while not prise_fee:
+            prise_fee = requests.get(steam_link).json()
+
+        prise_fee = prise_fee["lowest_price"]
+
+        item_dict[item] = [get_item_name(item), prise_fee]
+    return item_dict
